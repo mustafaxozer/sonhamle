@@ -21,9 +21,9 @@ delay_min, delay_max = config["delay_range_seconds"]
 
 ACCOUNTS_DIR = "accounts"
 
-async def start_group_sessions(session_list):
+async def start_sessions(session_names):
     clients = []
-    for name in session_list:
+    for name in session_names:
         session_path = os.path.join(ACCOUNTS_DIR, f"{name}.session")
         client = TelegramClient(session_path, api_id, api_hash)
         await client.connect()
@@ -136,9 +136,8 @@ async def handle_new_message(event, clients, group_name):
         delay_sec = schedule_delay(post_time, now, random_delay_between(after_peak_start, after_peak_end))
         asyncio.create_task(delayed_view(c, username, msg_id, delay_sec))
 
-
 async def main():
-    # Grupların session dosyalarını oku
+    # Grupların session dosyalarını oku (tek seferde topla)
     def read_sessions(filename):
         with open(filename, "r") as f:
             return [line.strip() for line in f if line.strip()]
@@ -147,42 +146,50 @@ async def main():
     group_b_sessions = read_sessions("group_b.txt")
     group_c_sessions = read_sessions("group_c.txt")
 
+    # Tüm session isimlerini tek kümede topla, böylece tekrar eden olmaz
+    all_sessions = list(set(group_a_sessions + group_b_sessions + group_c_sessions))
+    print(f"[i] Toplam aktif session sayısı: {len(all_sessions)}")
+
     # Grupların kanalları
-    group_a_channels = groups_config["A"]["channels"]
-    group_b_channels = groups_config["B"]["channels"]
-    group_c_channels = groups_config["C"]["channels"]
+    group_channels = {
+        "A": groups_config["A"]["channels"],
+        "B": groups_config["B"]["channels"],
+        "C": groups_config["C"]["channels"],
+    }
 
-    # Clientları başlat
-    group_a_clients = await start_group_sessions(group_a_sessions)
-    group_b_clients = await start_group_sessions(group_b_sessions)
-    group_c_clients = await start_group_sessions(group_c_sessions)
-
-    if not (group_a_clients or group_b_clients or group_c_clients):
+    # Tüm sessionlardan clientları başlat
+    clients = await start_sessions(all_sessions)
+    if not clients:
         print("Aktif hesap yok.")
         return
 
-    # Event handler kur
-    for client in group_a_clients:
-        @client.on(events.NewMessage(chats=group_a_channels))
-        async def handler(event):
-            await handle_new_message(event, group_a_clients, "Group A")
+    # Session isimlerine göre client eşlemesi (filename’den isim alarak)
+    client_map = {os.path.basename(client.session.filename).replace(".session", ""): client for client in clients}
 
-    for client in group_b_clients:
-        @client.on(events.NewMessage(chats=group_b_channels))
+    # Her client için event handler kur
+    for client in clients:
+        @client.on(events.NewMessage)
         async def handler(event):
-            await handle_new_message(event, group_b_clients, "Group B")
+            channel = await event.get_chat()
+            username = channel.username or channel.id
 
-    for client in group_c_clients:
-        @client.on(events.NewMessage(chats=group_c_channels))
-        async def handler(event):
-            await handle_new_message(event, group_c_clients, "Group C")
+            # Bu mesaj hangi gruba ait kanaldan geliyor kontrol et
+            group_name = None
+            for g_name, channels in group_channels.items():
+                if str(username) in channels:
+                    group_name = g_name
+                    break
+
+            if group_name is None:
+                # Kanal tanımlı değil, pas geç
+                return
+
+            # Aynı client için handle et
+            await handle_new_message(event, [client], group_name)
 
     print("[✅] Bot çalışıyor, yeni gönderiler dinleniyor...")
 
-    # Tüm clientları aynı anda çalıştır
-    all_clients = group_a_clients + group_b_clients + group_c_clients
-    await asyncio.gather(*[client.run_until_disconnected() for client in all_clients])
-
+    await asyncio.gather(*[client.run_until_disconnected() for client in clients])
 
 if __name__ == "__main__":
     asyncio.run(main())
