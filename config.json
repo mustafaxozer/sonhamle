@@ -1,11 +1,16 @@
 {
   "api_id": 24455579,
   "api_hash": "07ee8750efd6ccbc3f1fa854cbf74023",
-  "channels": [
-    "teorikeslesme1",
-    "teorikeslesme2",
-    "teorikeslesme3",
-    "teorikeslesme4"
-  ],
-  "delay_range_seconds": [2, 5]
+  "groups": {
+    "A": {
+      "channels": ["teorikeslesme1", "teorikeslesme2", "teorikeslesme3", "teorikeslesme4"]
+    },
+    "B": {
+      "channels": ["teorikeslesme01", "teorikeslesme02", "teorikeslesme03"]
+    },
+    "C": {
+      "channels": ["teorikeslesme04", "teorikeslesme05", "teorikeslesme06"]
+    }
+  },
+  "delay_range_seconds": [5, 30]
 }
